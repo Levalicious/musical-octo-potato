@@ -13,7 +13,7 @@ import static resources.Config.MINER_WIF;
 public class Temp {
     private static TreeSet<WBlock> tempLayer;
 
-    public static void addBlock(long height, String prefix, ArrayList<Transaction> transactions, Finalized layer) {
+    public static void addBlock(byte[] height, String prefix, ArrayList<Transaction> transactions, Finalized layer) {
         WBlock block = new WBlock();
 
         block.setAncestors(layer.getHashes());
@@ -25,8 +25,8 @@ public class Temp {
 
     }
 
-    public static ArrayList<String> getHashes() {
-        ArrayList<String> hashList = new ArrayList<String>();
+    public static ArrayList<byte[]> getHashes() {
+        ArrayList<byte[]> hashList = new ArrayList<byte[]>();
         for(Block block : tempLayer ) {
             hashList.add(block.getBlockHash());
         }
@@ -34,7 +34,7 @@ public class Temp {
         return hashList;
     }
 
-    public static void evalBlocks() throws UnsupportedEncodingException {
+    public static void evalBlocks() {
         for(WBlock block : tempLayer ) {
             block.setValid(block.checkBlock());
         }

@@ -2,84 +2,98 @@ package core.types.block;
 
 import core.services.PoolManager;
 import core.types.transaction.TransactionOutput;
+import org.bouncycastle.pqc.math.linearalgebra.ByteUtils;
+import util.wallet.ECKey;
 
+import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.Date;
 
-import static crypto.hash.Hash.blake256;
-import static util.wallet.Private.*;
-import static util.wallet.Public.*;
-import static util.wallet.Sign.signString;
-import static util.wallet.Sign.verifySig;
+import static util.byteUtils.ByteUtil.concat;
 
-public class Header {
-    private long height;
+public class Header implements Serializable {
+    private byte[] height;
     private String prefix;
-    private String hashRoot;
-    private String txRoot;
-    private String fees;
+    private byte[] hashRoot;
+    private byte[] txRoot;
+    private byte[] fees;
     private TransactionOutput reward;
-    private String timestamp;
-    private String sig;
-    private String pubKey;
-    private String blockHash;
+    private byte[] timestamp;
+    private byte[] r;
+    private byte[] s;
+    private byte v;
+    private byte[] blockHash;
 
-    protected Header() {
+    public Header() {
 
     }
-
-    protected Header(long height, String prefix, String txRoot, String fees, String hashRoot, String key) {
+    
+    public Header(byte[] height, String prefix, byte[] txRoot, byte[] fees, byte[] hashRoot, byte[] privKey) {
         this.height = height;
         this.prefix = prefix;
         this.txRoot = txRoot;
         this.fees = fees;
-        this.reward = new TransactionOutput(publicKeyToAddress(privateKeyToPublicKey(stringToPrivateKey(key))), fees, null);
+        this.reward = new TransactionOutput(ECKey.computeAddress(ECKey.publicKeyFromPrivate(new BigInteger(privKey),true )), fees, null);
         this.hashRoot = hashRoot;
-        this.timestamp = new Date().toString();
-        this.sig = signBlock(key);
-        this.pubKey = publicKeyToString(privateKeyToPublicKey(stringToPrivateKey(key)));
-        this.blockHash = calculateHash();
+
+        try {
+            this.timestamp = new Date().toString().getBytes("UTF-8");
+        } catch(Exception e) {
+            System.out.println("Your computer doesn't support the necessary encoding.");
+            System.exit(0);
+        }
+
+        signBlock(privKey);
+        this.blockHash = calcHash();
     }
 
-    private String signBlock(String privKey) {
-        return signString(privKey, "{" +
-                Long.toString(height) + "," +
-                prefix + "," +
-                hashRoot + "," +
-                txRoot + "," +
-                fees + "," +
-                reward.toString() + "," +
-                timestamp + "}");
+    private void signBlock(byte[] privKey) {
+        byte[] temp = new byte[0];
+        try {
+            temp = concat(temp, height, prefix.getBytes("UTF-8"), hashRoot, txRoot, fees, reward.toBytes(), timestamp);
+        }catch(Exception e) {
+            System.out.println("Your computer doesn't support the necessary encoding.");
+            System.exit(0);
+        }
+
+        ECKey.ECDSASignature sig = ECKey.fromPrivate(privKey).sign(crypto.hash.Hash.byteHash.blake256(temp));
+
+        this.r = sig.r.toByteArray();
+        this.s = sig.s.toByteArray();
+        this.v = sig.v;
     }
 
     protected boolean checkSig() {
-        String data = ("{" +
-                Long.toString(height) + "," +
-                prefix + "," +
-                hashRoot + "," +
-                txRoot + "," +
-                fees + "," +
-                reward.toString() + "," +
-                timestamp + "}");
+        byte[] temp = new byte[0];
+        try {
+            temp = concat(temp, height, prefix.getBytes("UTF-8"), hashRoot, txRoot, fees, reward.toBytes(), timestamp);
+        }catch(Exception e) {
+            System.out.println("Your computer doesn't support the necessary encoding.");
+            System.exit(0);
+        }
 
-        return verifySig(this.pubKey, data, this.sig);
+        ECKey.ECDSASignature sig = ECKey.ECDSASignature.fromComponents(r,s,v);
+
+        try {
+            return ECKey.verify(crypto.hash.Hash.byteHash.blake256(temp), sig, ECKey.signatureToKeyBytes(crypto.hash.Hash.byteHash.blake256(temp), sig));
+        }catch(Exception e) {
+            return false;
+        }
     }
 
-    private String calculateHash() {
-        String hash = blake256("{" +
-                Long.toString(height) + "," +
-                prefix + "," +
-                hashRoot + "," +
-                txRoot + "," +
-                fees + "," +
-                reward.toString() + "," +
-                timestamp + "," +
-                sig + "," +
-                pubKey + "}");
+    private byte[] calcHash() {
+        byte[] temp = new byte[0];
+        try {
+            temp = concat(temp, height, prefix.getBytes("UTF-8"), hashRoot, txRoot, fees, reward.toBytes(), timestamp);
+        }catch(Exception e) {
+            System.out.println("Your computer doesn't support the necessary encoding.");
+            System.exit(0);
+        }
 
-        return hash;
+        return crypto.hash.Hash.byteHash.blake256(temp);
     }
 
-    protected long getHeight() {
+    protected byte[] getHeight() {
         return height;
     }
 
@@ -87,64 +101,52 @@ public class Header {
         return prefix;
     }
 
-    protected String getHashRoot() {
+    protected byte[] getHashRoot() {
         return hashRoot;
     }
 
-    protected String getTxRoot() {
+    protected byte[] getTxRoot() {
         return txRoot;
     }
 
-    protected String getTimestamp() {
+    protected byte[] getTimestamp() {
         return timestamp;
     }
 
-    protected String getBlockHash() {
+    protected byte[] getBlockHash() {
         return blockHash;
     }
 
-    protected String getSig() {
-        return sig;
+    protected byte[] getFees() {
+        return fees;
     }
 
-    protected String getPubKey() {
-        return pubKey;
+    protected byte[] getR() {
+        return r;
+    }
+
+    protected byte[] getS() {
+        return s;
+    }
+
+    protected byte getV() {
+        return v;
     }
 
     protected boolean checkHash() {
-        return blockHash.equals(calculateHash());
-    }
-
-    public String toString() {
-        String temp = ("{" +
-                Long.toString(height) + "," +
-                prefix + "," +
-                hashRoot + "," +
-                txRoot + "," +
-                fees + "," +
-                reward.toString() + "," +
-                timestamp + "," +
-                sig + "," +
-                pubKey + "," +
-                blockHash + "}");
-
-        return temp;
+        return ByteUtils.equals(blockHash, calcHash());
     }
 
     protected boolean check() {
-        if(!this.blockHash.equals(calculateHash())) {
-            return false;
-        }
+        if(!checkHash()) return false;
 
-        if(!this.checkSig()) {
-            return false;
-        }
+        if(!checkSig()) return false;
 
         return true;
     }
 
     protected boolean process() {
-        PoolManager.UTXOPool.put(reward.getHash(),reward);
+        PoolManager.UTXOPool.put(reward.getHash(), reward);
         return true;
     }
 }

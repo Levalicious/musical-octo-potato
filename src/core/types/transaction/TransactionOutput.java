@@ -1,45 +1,54 @@
 package core.types.transaction;
 
-import java.math.BigInteger;
+import crypto.hash.Hash;
+import util.byteUtils.BIUtil;
+import util.byteUtils.ByteUtil;
 
-import static crypto.hash.Hash.blake256;
-import static util.wallet.Public.publicKeyToAddress;
-import static util.wallet.Public.stringToPublicKey;
+import java.io.Serializable;
 
-public class TransactionOutput {
-    private String hash;
-    private String recipient;
-    private String value;
-    private String parentTxHash;
+import static crypto.hash.Hash.*;
+import static util.Hex.fromHex;
+import static util.Hex.getHex;
+import static util.byteUtils.ByteUtil.concat;
 
-    public TransactionOutput(String recipient, String value, String parentTxHash) {
+public class TransactionOutput implements Serializable {
+    private byte[] hash;
+    private byte[] recipient;
+    private byte[] value;
+    private byte[] parentTxHash;
+
+    public TransactionOutput(byte[] recipient, byte[] value, byte[] parentTxHash) {
         this.recipient = recipient;
         this.value = value;
         this.parentTxHash = parentTxHash;
-        this.hash = calcHash();
+        this.hash  = calcHash();
     }
 
-    private String calcHash() {
-        return blake256("{" + parentTxHash + "," + value + "," + recipient + "}");
+    private byte[] calcHash() {
+        if(parentTxHash != null) {
+            return fromHex(blake256("{" + getHex(parentTxHash) + "," + getHex(value) + "," + getHex(recipient) + "}"));
+        }else {
+            return fromHex(blake256("{" + getHex(value) + "," + getHex(recipient) + "}"));
+        }
     }
 
-    public boolean checkOwner(String pubKey) {
-        return recipient.equals(publicKeyToAddress(stringToPublicKey(pubKey)));
+    public boolean checkOwner(byte[] pubkey) {
+        return fromHex(walletHash(getHex(pubkey))).equals(recipient);
     }
 
-    public String getHash() {
+    public byte[] getHash() {
         return hash;
     }
 
-    public BigInteger getValue() {
-        return new BigInteger(value);
+    public byte[] getValue() {
+        return value;
     }
 
-    public String toString() {
+    public byte[] toBytes() {
         if(parentTxHash == null) {
-            return ("{" + hash + "," + recipient + "," + value + "}");
+            return concat(hash, recipient, value);
         }else {
-            return ("{" + hash + "," + recipient + "," + value + "," + parentTxHash + "}");
+            return concat(hash, recipient, value, parentTxHash);
         }
     }
 }

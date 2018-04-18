@@ -1,30 +1,31 @@
 package core.types.chain.layer;
 
-import com.google.gson.GsonBuilder;
 import core.types.block.Block;
 import core.types.transaction.Transaction;
+import org.bouncycastle.pqc.math.linearalgebra.ByteUtils;
 
-import java.io.UnsupportedEncodingException;
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.TreeSet;
 
 import static resources.Config.MINER_WIF;
 
-public class Finalized {
-    private long height;
-    private TreeSet<Block> layer;
+public class Finalized implements Serializable {
+    private byte[] height;
+    private ArrayList<Block> layer;
 
-    public Finalized(long height) {
+    public Finalized(byte[] height) {
         this.height = height;
-        layer = new TreeSet<Block>();
+        layer = new ArrayList<Block>();
     }
 
-    public Finalized(long height, TreeSet<Block> layer) {
+    public Finalized(byte[] height, ArrayList<Block> layer) {
         this.height = height;
         this.layer = layer;
     }
 
-    public TreeSet<Block> getInstance() {
+    public ArrayList<Block> getInstance() {
         return this.layer;
     }
 
@@ -39,8 +40,13 @@ public class Finalized {
         this.layer.add(block);
     }
 
-    public ArrayList<String> getHashes() {
-        ArrayList<String> hashList = new ArrayList<String>();
+    public void addBlock(Block block) {
+        this.layer.add(block);
+    }
+
+    public ArrayList<byte[]> getHashes() {
+        Collections.sort(layer);
+        ArrayList<byte[]> hashList = new ArrayList<byte[]>();
         for(Block block : layer) {
             hashList.add(block.getBlockHash());
         }
@@ -48,34 +54,43 @@ public class Finalized {
         return hashList;
     }
 
-    public boolean checkBlocks() throws UnsupportedEncodingException {
+    public boolean checkBlocks() {
+        Collections.sort(layer);
         for(Block block : layer) {
             if(!block.checkBlock()) return false;
+        }
+
+        for(int i = 0; i < layer.size(); i++) {
+            for(int j = 0; j < layer.size(); j++) {
+                if(i != j) {
+                    if(layer.get(i).getPrefix().equals(layer.get(j).getPrefix())) return false;
+                }
+            }
         }
 
         return true;
     }
 
-    public boolean checkAncestors(String realPrevRoot) {
-        String prevRoot = " ";
+    public boolean checkAncestors(byte[] realPrevRoot) {
+        Collections.sort(layer);
+        byte[] prevRoot = new byte[0];
         boolean hasRoot = false;
         for(Block block : layer) {
             if(!hasRoot) {
                 prevRoot = block.getAncestorRoot();
                 hasRoot = true;
             }else {
-                if(!prevRoot.equals(block.getAncestorRoot())) {
-                    return false;
-                }
+                if(!ByteUtils.equals(prevRoot,block.getAncestorRoot())) return false;
             }
         }
 
-        if(!prevRoot.equals(realPrevRoot)) return false;
+        if(!ByteUtils.equals(prevRoot,realPrevRoot)) return false;
 
         return true;
     }
 
-    public void processLayer() throws UnsupportedEncodingException {
+    public void processLayer() {
+        Collections.sort(layer);
         for(Block block : layer) {
             block.processBlock();
         }

@@ -80,7 +80,7 @@ public class TreeNode<T extends TxBase> {
      * @param value The value to add.
      */
     private void addToBranchNode(T value) {
-        String temp = value.getSender();
+        String temp = value.getSenderString();
 
 
         if(temp.length() <= depth) {

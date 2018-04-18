@@ -1,26 +1,66 @@
 package crypto.hash;
 
+import crypto.cryptohash.Keccak256;
+import crypto.cryptohash.Keccak512;
 import org.bouncycastle.jcajce.provider.digest.Blake2b;
-import static resources.Config.*;
 
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Set;
 
-import static crypto.hash.MurmurHash.hash64;
 import static util.Hex.getHex;
 
 public class Hash {
-    public static void main(String[] args) {
-        System.out.println(sha256("Herro"));
+    static MessageDigest md;
+
+    public static class byteHash {
+        public static byte[] sha256(byte[] in) {
+            md = new Keccak256();
+            byte[] out = md.digest(in);
+            return out;
+        }
+
+        public static byte[] sha512(byte[] in) {
+            md = new Keccak512();
+            byte[] out = md.digest(in);
+            return out;
+        }
+
+        public static byte[] blake256(byte[] in) {
+            md = new Blake2b.Blake2b256();
+            byte[] out = md.digest(in);
+            return out;
+        }
+
+        public static byte[] blake512(byte[] in) {
+            md = new Blake2b.Blake2b256();
+            byte[] out = md.digest(in);
+            return out;
+        }
+
     }
     public static String sha256(String in) {
-        return keccak.getHash(toHex(in), Parameters.KECCAK_256);
+        md = new Keccak256();
+        byte[] out = new byte[32];
+        try{
+            out= md.digest(in.getBytes("UTF-8"));
+        }catch(UnsupportedEncodingException e) {
+            System.out.println("Your computer does not support UTF-8. Exiting.");
+            System.exit(0);
+        }
+        return getHex(out);
     }
 
     public static String sha512(String in) {
-        return keccak.getHash(toHex(in), Parameters.KECCAK_512);
+        md = new Keccak512();
+        byte[] out = new byte[32];
+        try{
+            out= md.digest(in.getBytes("UTF-8"));
+        }catch(UnsupportedEncodingException e) {
+            System.out.println("Your computer does not support UTF-8. Exiting.");
+            System.exit(0);
+        }
+        return getHex(out);
     }
 
     public static String blake256(String in) {
@@ -49,16 +89,6 @@ public class Hash {
 
     public static String walletHash(String in) {
         return blake256(in);
-    }
-
-    public static long murmur64(String in) {
-        try {
-            return hash64(in.getBytes("UTF-8"));
-        }catch(UnsupportedEncodingException e) {
-            System.out.println("Your computer does not support UTF-8. Exiting.");
-            System.exit(0);
-        }
-        return 0;
     }
 
     public static String getMerkleRoot(ArrayList temp) {
@@ -93,5 +123,17 @@ public class Hash {
             System.exit(0);
         }
         return null;
+    }
+
+    public static byte[] toBytes(String in) {
+        byte[] out = new byte[1];
+        try{
+            out = in.getBytes("UTF-8");
+        }catch(UnsupportedEncodingException e) {
+            System.out.println("Your computer does not support the required encoding format.");
+            System.exit(0);
+        }
+
+        return out;
     }
 }

@@ -8,9 +8,12 @@ import core.types.tree.*;
 import user.Wallet;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class PoolManager implements TxPool, UTXOPool, LeafPool, Serializable {
+import static util.Hex.fromHex;
+
+public class PoolManager implements UTXOPool, LeafPool, Serializable {
     public static void clearPool() {
         TxPool.clear();
     }
@@ -40,9 +43,9 @@ public class PoolManager implements TxPool, UTXOPool, LeafPool, Serializable {
             System.out.print("\r");
             System.out.print(temp);
             System.out.printf("%.2f",(((double)(i + 1)/(double)txNum)) * (double)100);
-            wallet.newWallet();
-            Transaction tx = new Transaction(wallet.getPubAddress(), "1348rnwexLA8ifeEaD78uhWCHVeV4FWXWTtayFD1wTMHKxGgfmYSM3rXLHUx4PRLkVBRbjC1pPo3yujzNNkzzK1q5", "10", null, wallet.getPrivKey());
-            TxPool.put(tx.calcHash(), tx);
+            wallet = new Wallet();
+            Transaction tx = new Transaction(fromHex(wallet.getPubAddress()), fromHex(new Wallet().getPubAddress()), new BigInteger("10").toByteArray(), null, wallet.getPrivKey());
+            TxPool.put(tx);
         }
     }
 
@@ -50,7 +53,7 @@ public class PoolManager implements TxPool, UTXOPool, LeafPool, Serializable {
         try {
             FileOutputStream fout = new FileOutputStream((fileName + ".ser"));
             ObjectOutputStream out = new ObjectOutputStream(fout);
-            out.writeObject(TxPool);
+            out.writeObject(TxPool.TxPool);
             out.close();
             fout.close();
             System.out.println("TxPool saved!");
@@ -63,7 +66,7 @@ public class PoolManager implements TxPool, UTXOPool, LeafPool, Serializable {
         try {
             FileInputStream fin = new FileInputStream(fileName + ".ser");
             ObjectInputStream in = new ObjectInputStream(fin);
-            ConcurrentHashMap<String, Transaction> temp = ((ConcurrentHashMap<String, Transaction>) in.readObject());
+            ConcurrentHashMap<byte[], Transaction> temp = ((ConcurrentHashMap<byte[], Transaction>) in.readObject());
             TxPool.putAll(temp);
             temp = null;
             in.close();

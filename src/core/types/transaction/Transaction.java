@@ -1,178 +1,238 @@
 package core.types.transaction;
 
 import core.types.pools.UTXOPool;
+import crypto.hash.Hash;
+import util.byteUtils.BIUtil;
+import util.byteUtils.ByteUtil;
+import util.wallet.ECKey;
 
+import javax.print.DocFlavor;
 import java.io.Serializable;
-import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
-import java.security.PrivateKey;
+import java.security.SignatureException;
 import java.util.ArrayList;
+import java.util.Arrays;
 
-import static crypto.hash.Hash.blake256;
 import static resources.Config.GENESIS_TX;
-import static resources.Config.MIN_BYTE_FEE;
-import static util.wallet.Private.*;
-import static util.wallet.Public.*;
-import static util.wallet.Sign.*;
+import static util.Hex.fromHex;
+import static util.Hex.getHex;
+import static util.byteUtils.ByteUtil.appendByte;
+import static util.byteUtils.ByteUtil.concat;
 
 public class Transaction implements UTXOPool, TxBase, Serializable {
-    private String sender;
-    private String recipient;
-    private String value;
-    private String data;
-    private String fee;
-    private String signature;
-    private String senderKey;
-    private String txHash;
+    private byte[] sender;
+    private byte[] recipient;
+    private byte[] value;
+    private byte[] data = null;
+    private byte[] fee;
+    private byte[] r;
+    private byte[] s;
+    private byte v;
+    private byte[] txHash;
 
-    private ArrayList<TransactionInput> inputs = new ArrayList<TransactionInput>();
-    private ArrayList<TransactionOutput> outputs = new ArrayList<TransactionOutput>();
+    private ArrayList<TransactionInput> inputs = new ArrayList<>();
+    private ArrayList<TransactionOutput> outputs = new ArrayList<>();
 
-    public Transaction(String sender, String recipient, String value, ArrayList<TransactionInput> inputs, String wif) throws UnsupportedEncodingException {
-        this.sender = sender;
-        this.recipient = recipient;
-        this.value = value;
-        this.fee = calcFee();
-        this.inputs = inputs;
-        genSig(stringToPrivateKey(wif));
-        this.txHash = calcHash();
+    public Transaction() {
+
     }
 
-    public Transaction(String sender, String recipient, String value, String data, ArrayList<TransactionInput> inputs, String wif) throws UnsupportedEncodingException {
+    public Transaction(byte[] sender, byte[] recipient, byte[] value, ArrayList<TransactionInput> inputs, byte[] privKey) {
         this.sender = sender;
         this.recipient = recipient;
         this.value = value;
+        this.data = null;
         this.fee = calcFee();
+        this.inputs = inputs;
+        genSig(privKey);
+        this.txHash = calcHash();
+
+    }
+
+    public Transaction(boolean hasData, byte[] sender, byte[] recipient, byte[] value, byte[] data, ArrayList<TransactionInput> inputs, byte[] privKey) {
+        this.sender = sender;
+        this.recipient = recipient;
+        this.value = value;
         this.data = data;
+        this.fee = calcFeeWithData();
         this.inputs = inputs;
-        genSig(stringToPrivateKey(wif));
+        genSigWithData(privKey);
+        this.txHash = calcHashWithData();
+    }
+
+    public Transaction(byte[] sender, byte[] recipient, byte[] value, byte[] fee, ArrayList<TransactionInput> inputs, byte[] privKey) {
+        this.sender = sender;
+        this.recipient = recipient;
+        this.value = value;
+        this.fee = fee;
+        this.data = null;
+        this.inputs = inputs;
+        genSig(privKey);
         this.txHash = calcHash();
     }
 
-    public Transaction(String sender, String recipient, String value, String fee, String data, ArrayList<TransactionInput> inputs, String wif) {
+    public Transaction(byte[] sender, byte[] recipient, byte[] value, byte[] fee, byte[] data, ArrayList<TransactionInput> inputs, byte[] privKey) {
         this.sender = sender;
         this.recipient = recipient;
         this.value = value;
         this.fee = fee;
         this.data = data;
         this.inputs = inputs;
-        this.fee = fee;
-        genSig(stringToPrivateKey(wif));
-        this.txHash = calcHash();
+        genSigWithData(privKey);
+        this.txHash = calcHashWithData();
     }
 
-    private Transaction(String recipient) {
-        this.sender = "0x0000000000000000000000000000000000000000";
-        this.recipient = recipient;
-        this.value = "100000000000000000000000000000000000";
-        this.inputs = null;
-        this.txHash = calcHash();
+    public void genSig(byte[] privKey) {
+        ECKey keypair = ECKey.fromPrivate(privKey);
+        byte[] toSign = concat(sender, recipient, value, fee);
+        for(TransactionInput i : inputs) {
+            toSign = concat(toSign, i.toBytes());
+        }
+        ECKey.ECDSASignature sig = keypair.sign(crypto.hash.Hash.byteHash.blake256(toSign));
+        r = sig.r.toByteArray();
+        s = sig.s.toByteArray();
+        v = sig.v;
     }
 
-    public static Transaction genesis(String recipient) {
-        return new Transaction(recipient);
+    public void genSigWithData(byte[] privKey) {
+        ECKey keypair = ECKey.fromPrivate(privKey);
+        byte[] toSign = concat(sender, recipient, value, fee, data);
+        if(inputs != null) {
+            for(TransactionInput i : inputs) {
+                toSign = concat(toSign, i.toBytes());
+            }
+        }
+        ECKey.ECDSASignature sig = keypair.sign(crypto.hash.Hash.byteHash.blake256(toSign));
+        r = sig.r.toByteArray();
+        s = sig.s.toByteArray();
+        v = sig.v;
     }
 
-    public String calcHash() {
-        return blake256("{" + this.sender + "," + this.recipient + "," + this.value + "," + this.inputs.toString() + "," + this.signature + "," + this.senderKey + "}");
+    public byte[] calcFee() {
+        return BIUtil.toBI(value).divide(new BigInteger("100")).toByteArray();
+
     }
 
-    public String grabHash() {
-        return this.txHash;
+    public byte[] calcFeeWithData() {
+        return BIUtil.toBI(value).divide(new BigInteger("100")).multiply(new BigInteger(Long.toString(data.length))).toByteArray();
     }
 
-    public String calcFee() throws UnsupportedEncodingException  {
-        BigInteger val = new BigInteger(value);
-        val = val.divide(new BigInteger("100"));
+    public byte[] calcByteFee() {
+        byte[] inputSet = new byte[0];
+        for(TransactionInput i : inputs) {
+            inputSet = concat(inputSet, i.toBytes());
+        }
+        byte[] temp;
+        if(data != null) {
 
-        byte[] tx;
-        if(this.data != null) {
-            tx = ("{" + this.sender + "," + this.recipient + "," + this.value + "," + this.data + "," + this.inputs.toString() + "}").getBytes("UTF-8");
+            temp = concat(sender, recipient, value, data, inputSet);
         }else {
-            tx = ("{" + this.sender + "," + this.recipient + "," + this.value + "," + this.inputs.toString() + "}").getBytes("UTF-8");
+            temp = concat(sender, recipient, value, inputSet);
         }
 
-        BigInteger bytecount = new BigInteger(Integer.toString(tx.length));
+        return fromHex(Integer.toHexString(temp.length));
+    }
 
-        /* Transaction hasn't been signed, therefore signature, hash, and senderkey have to be added in as such */
-        bytecount = bytecount.add(new BigInteger("168"));
+    public byte[] calcHash() {
+        byte[] toHash = concat(sender, recipient, value, fee, r, s);
+        toHash = appendByte(toHash, v);
+        for(TransactionInput i : inputs) {
+            toHash = concat(toHash, i.toBytes());
+        }
 
-        /* If the sender attaches arbitrary data, make the transaction cost (size ^ 2) * bytefee */
-        if(this.data != null) {
-            if(val.compareTo(bytecount.multiply(MIN_BYTE_FEE)) < 0) {
-                return bytecount.multiply(MIN_BYTE_FEE).toString();
+        return crypto.hash.Hash.byteHash.blake256(toHash);
+    }
+
+    public byte[] calcHashWithData() {
+        byte[] toHash = concat(sender, recipient, value, fee, data, r, s);
+        toHash = appendByte(toHash, v);
+        if(inputs != null) {
+            for(TransactionInput i : inputs) {
+                toHash = concat(toHash, i.toBytes());
+            }
+        }
+
+
+        return crypto.hash.Hash.byteHash.blake256(toHash);
+    }
+
+    public boolean checkSig() {
+        byte[] signedData;
+        ECKey.ECDSASignature sig = new ECKey.ECDSASignature(new BigInteger(r), new BigInteger(s));
+        if(data != null) {
+            byte[] toSign = concat(sender, recipient, value, fee, data);
+            for(TransactionInput i : inputs) {
+                toSign = concat(toSign, i.toBytes());
+            }
+            signedData = crypto.hash.Hash.byteHash.blake256(toSign);
+        }else{
+            byte[] toSign = concat(sender, recipient, value, fee);
+            for(TransactionInput i : inputs) {
+                toSign = concat(toSign, i.toBytes());
+            }
+            signedData = crypto.hash.Hash.byteHash.blake256(toSign);
+        }
+
+        try{
+            if(!Arrays.equals(ECKey.computeAddress(ECKey.signatureToKeyBytes(signedData, sig)), sender)) return false;
+            if(data != null) {
+                return ECKey.verify(signedData, sig, ECKey.signatureToKeyBytes(signedData, sig));
             }else {
-                return val.toString();
+                return ECKey.verify(signedData, sig, ECKey.signatureToKeyBytes(signedData, sig));
             }
+        }catch(SignatureException s) {
+            return false;
+        }
+    }
+
+    public boolean checkInputs(byte[] value, byte[] fee) {
+        BigInteger total = BigInteger.ZERO;
+        for(TransactionInput i : inputs) {
+            if(!UTXOPool.containsKey(i.getParentHash())) return false;
+            total = total.add(new BigInteger(i.getUXTO().getValue()));
+        }
+
+        if(BIUtil.isLessThan(new BigInteger(value).add(new BigInteger(fee)), total)) return false;
+
+
+
+        return true;
+    }
+
+    public boolean checkTx() {
+        if(data != null) {
+            if(Arrays.equals(calcHashWithData(), GENESIS_TX)) return true;
+
+            if(BIUtil.isLessThan(new BigInteger(calcFeeWithData()), new BigInteger(fee))) fee = calcFeeWithData();
+
+            if(BIUtil.isLessThan(new BigInteger(calcByteFee()), new BigInteger(fee))) fee = calcByteFee();
+
+            if(!Arrays.equals(txHash,calcHashWithData())) return false;
+
+            if(!checkSig()) return false;
+
+            if(!checkInputs(value, fee)) return false;
+
         }else {
-            if(val.compareTo(bytecount.multiply(bytecount).multiply(MIN_BYTE_FEE)) < 0) {
-                return bytecount.multiply(bytecount).multiply(MIN_BYTE_FEE).toString();
-            }else {
-                return val.toString();
-            }
+            if(BIUtil.isLessThan(new BigInteger(calcFee()), new BigInteger(fee))) fee = calcFee();
+
+            if(BIUtil.isLessThan(new BigInteger(calcByteFee()), new BigInteger(fee))) fee = calcByteFee();
+
+            if(!Arrays.equals(txHash,calcHash())) return false;
+
+            if(!checkSig()) return false;
+
+            if(!checkInputs(value, fee)) return false;
         }
+
+        return true;
     }
 
-    public void genSig(PrivateKey privateKey) {
-        String data;
-        if(this.data != null) {
-            data = "{" + sender + "," + recipient + "," + value + "," + this.data + "," + fee + "," +  this.inputs.toString() + "}";
-        }else {
-            data = "{" + sender + "," + recipient + "," + value + "," + fee + "," +  this.inputs.toString() + "}";
-        }
+    public boolean processTx() {
+        if(!checkTx()) return false;
 
-        this.signature = signString(privateKey, blake256(data));
-        this.senderKey = publicKeyToString(util.wallet.Public.privateKeyToPublicKey(privateKey));
-    }
-
-    private boolean checkSig() {
-        String data;
-        if(this.data != null) {
-            data = "{" + sender + "," + recipient + "," + value + "," + this.data + "," + fee + "," + this.inputs.toString() + "}";
-        }else {
-            data = "{" + sender + "," + recipient + "," + value + "," + fee + "," + this.inputs.toString() + "}";
-        }
-
-        return verifySig(senderKey, blake256(data), signature);
-    }
-
-    public boolean checkTx() throws UnsupportedEncodingException {
-        if(calcHash().equals(GENESIS_TX)) {
-            return true;
-        }
-
-        if(this.fee == null) {
-            return false;
-        }
-
-        if((new BigInteger(this.fee)).compareTo((new BigInteger(calcFee()))) < 0) {
-            return false;
-        }
-
-        if(this.getInputs().compareTo(new BigInteger(this.value).add(new BigInteger(this.fee))) < 0) {
-            return false;
-        }
-
-        if(!checkInputs()) {
-            return false;
-        }
-
-        if(checkSig()) {
-            if(txHash.equals(calcHash())) {
-                return this.sender.equalsIgnoreCase(publicKeyToAddress(stringToPublicKey(senderKey)));
-            }
-        }
-
-        return false;
-    }
-
-    public boolean processTx() throws UnsupportedEncodingException {
-        if(!checkTx()) {
-            return false;
-        }
-
-        if(calcHash().equals(GENESIS_TX)) {
-            outputs.add(new TransactionOutput(this.recipient, this.value, this.txHash));
+        if(Arrays.equals(calcHashWithData(), GENESIS_TX)) {
+            outputs.add(new TransactionOutput(recipient, value, txHash));
 
             for(TransactionOutput o : outputs) {
                 UTXOPool.put(o.getHash(), o);
@@ -185,28 +245,19 @@ public class Transaction implements UTXOPool, TxBase, Serializable {
             i.setUTXO(UTXOPool.get(i.getParentHash()));
         }
 
-        if(getInputs().intValue() < 1) {
-            System.out.println("Transaction inputs too small.");
-            return false;
-        }
+        BigInteger leftOver = (getInputs().subtract(new BigInteger(value).add(new BigInteger(fee))));
+        outputs.add(new TransactionOutput(recipient, value, txHash));
+        outputs.add(new TransactionOutput(recipient, leftOver.toByteArray(), txHash));
 
-        String leftOver = ((new BigInteger(this.value)).subtract(getInputs())).subtract(new BigInteger(this.fee)).toString();
-        txHash = calcHash();
-        outputs.add(new TransactionOutput(this.recipient, this.value, this.txHash));
-        outputs.add(new TransactionOutput(this.recipient, leftOver, this.txHash));
-
-        if(!getInputs().toString().equals(getOutputs().toString())) {
-            outputs = null;
-            return false;
-        }
+        if(!checkIO()) return false;
 
         for(TransactionOutput o : outputs) {
             UTXOPool.put(o.getHash(), o);
         }
 
         for(TransactionInput i : inputs) {
-            if(i.getUTXO() == null) continue;
-            UTXOPool.remove(i.getUTXO().getHash());
+            if(i.getUXTO() == null) continue;
+            UTXOPool.remove(i.getUXTO().getHash());
         }
 
         return true;
@@ -216,19 +267,11 @@ public class Transaction implements UTXOPool, TxBase, Serializable {
         BigInteger total = BigInteger.ZERO;
 
         for(TransactionInput i : inputs) {
-            if(i.getUTXO() == null) continue;
-            total = total.add(i.getUTXO().getValue());
+            if(i.getUXTO() == null) continue;
+            total = total.add(new BigInteger(i.getUXTO().getValue()));
         }
 
         return total;
-    }
-
-    public boolean checkInputs() {
-        for(TransactionInput i : inputs) {
-            if(!UTXOPool.containsKey(i.getParentHash())) return false;
-        }
-
-        return true;
     }
 
     public BigInteger getOutputs() {
@@ -236,35 +279,28 @@ public class Transaction implements UTXOPool, TxBase, Serializable {
 
         for(TransactionOutput o : outputs) {
             if(o.getValue() == null) continue;
-            total = total.add(o.getValue());
+            total = total.add(new BigInteger(o.getValue()));
         }
 
         return total;
     }
 
-    public String getData() {
-        if(data != null) {
-            return this.data;
-        }else {
-            return null;
-        }
+    public boolean checkIO() {
+        if(!BIUtil.isEqual(getInputs().subtract(new BigInteger(fee)), getOutputs())) return false;
+        return true;
+    }
+
+
+
+    public String getSenderString() {
+        return getHex(sender);
+    }
+
+    public String grabHash() {
+        return getHex(txHash);
     }
 
     public BigInteger getFee() {
-        return new BigInteger(this.fee);
-    }
-
-    @Override
-    public String getSender() {
-        return this.sender;
-    }
-
-    @Override
-    public String toString() {
-        if(data != null) {
-            return ("{" + this.sender + "," + this.recipient + "," + this.value + "," + this.fee + "," + this.inputs.toString() + "," + this.data + "," + this.signature + "," + this.senderKey + "," + this.txHash + "}");
-        }else {
-            return ("{" + this.sender + "," + this.recipient + "," + this.value + "," + this.fee + "," + this.inputs.toString() + "," + this.signature + "," + this.senderKey + "," + this.txHash + "}");
-        }
+        return new BigInteger(fee);
     }
 }

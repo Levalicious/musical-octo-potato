@@ -1,12 +1,13 @@
 package core.types.block;
 
-import com.google.gson.GsonBuilder;
 import core.types.transaction.Transaction;
+import util.byteUtils.BIUtil;
 
-import java.io.UnsupportedEncodingException;
+import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.ArrayList;
 
-public class Block {
+public class Block implements Serializable, Comparable<Block> {
     private Header header;
     private Payload payload;
     private Ancestors ancestors;
@@ -24,11 +25,13 @@ public class Block {
         this.ancestors = ancestors;
     }
 
-    public Block(long height, String prefix, String wif, Payload payload, Ancestors ancestors) {
+    public Block(byte[] height, String prefix, byte[] wif, Payload payload, Ancestors ancestors) {
         this.header = new Header(height, prefix, payload.getRoot(), payload.countFees(), ancestors.getRoot(), wif);
+        this.payload = payload;
+        this.ancestors = ancestors;
     }
 
-    public boolean checkBlock() throws UnsupportedEncodingException {
+    public boolean checkBlock() {
         if(!header.check()) return false;
 
         if(!payload.check()) return false;
@@ -36,31 +39,32 @@ public class Block {
         return true;
     }
 
-    public void processBlock() throws UnsupportedEncodingException {
+    public void processBlock() {
         this.payload.process();
+        this.header.process();
     }
 
-    public void setHeader(long height, String prefix, String txRoot, String fees, String hashRoot, String key) {
-        this.header = new Header(height, prefix, txRoot, fees, hashRoot, key);
+    public void setHeader(byte[] height, String prefix, byte[] txRoot, byte[] fees, byte[] hashRoot, byte[] privkey) {
+        this.header = new Header(height, prefix, txRoot, fees, hashRoot, privkey);
     }
 
     public void setPayload(ArrayList<Transaction> txList) {
         this.payload = new Payload(txList);
     }
 
-    public void setAncestors(ArrayList<String> ancestors) {
+    public void setAncestors(ArrayList<byte[]> ancestors) {
         this.ancestors = new Ancestors(ancestors);
     }
 
-    public String getTxRoot() {
+    public byte[] getTxRoot() {
         return this.payload.getRoot();
     }
 
-    public String getAncestorRoot() {
+    public byte[] getAncestorRoot() {
         return this.ancestors.getRoot();
     }
 
-    public String getBlockHash() {
+    public byte[] getBlockHash() {
         return this.header.getBlockHash();
     }
 
@@ -68,7 +72,19 @@ public class Block {
         return this.header.getPrefix();
     }
 
-    public String getFees() {
+    public byte[] getFees() {
         return this.payload.countFees();
+    }
+
+    @Override
+    public int compareTo(Block block1) {
+        final int BEFORE = -1;
+        final int EQUAL = 0;
+        final int AFTER = 1;
+
+        if(BIUtil.isLessThan(new BigInteger(this.getPrefix(),16), new BigInteger(block1.getPrefix(), 16))) return AFTER;
+        if(BIUtil.isLessThan(new BigInteger(block1.getPrefix(), 16), new BigInteger(this.getPrefix(), 16))) return BEFORE;
+
+        return EQUAL;
     }
 }

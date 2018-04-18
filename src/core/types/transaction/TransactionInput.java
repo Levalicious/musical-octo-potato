@@ -1,14 +1,20 @@
 package core.types.transaction;
 
-public class TransactionInput {
-    private String txOutputHash;
+import util.byteUtils.ByteUtil;
+
+import java.io.Serializable;
+
+import static util.byteUtils.ByteUtil.concat;
+
+public class TransactionInput implements Serializable {
+    private byte[] txOutputHash;
     private TransactionOutput UTXO;
 
-    public TransactionInput(String txOutputHash) {
+    public TransactionInput(byte[] txOutputHash) {
         this.txOutputHash = txOutputHash;
     }
 
-    public String getParentHash() {
+    public byte[] getParentHash() {
         return txOutputHash;
     }
 
@@ -16,11 +22,11 @@ public class TransactionInput {
         this.UTXO = in;
     }
 
-    public TransactionOutput getUTXO() {
+    public TransactionOutput getUXTO() {
         return UTXO;
     }
 
-    public String toString() {
-        return "{" + txOutputHash + "," + UTXO.toString() + "}";
+    public byte[] toBytes() {
+        return concat(txOutputHash, UTXO.toBytes());
     }
 }

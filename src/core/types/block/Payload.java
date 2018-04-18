@@ -2,20 +2,21 @@ package core.types.block;
 
 import core.types.transaction.Transaction;
 
-import java.io.UnsupportedEncodingException;
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 
 import static crypto.hash.Hash.getMerkleRoot;
+import static util.Hex.fromHex;
 
-public class Payload {
+public class Payload implements Serializable {
     private ArrayList<Transaction> txSet;
 
-    protected Payload() {
+    public Payload() {
         txSet = new ArrayList<Transaction>();
     }
 
-    protected Payload(ArrayList<Transaction> txSet) {
+    public Payload(ArrayList<Transaction> txSet) {
         this.txSet = txSet;
     }
 
@@ -27,30 +28,32 @@ public class Payload {
         }
     }
 
-    protected String countFees() {
+    protected byte[] countFees() {
         BigInteger total = BigInteger.ZERO;
+
         for(Transaction tx : txSet) {
             total.add(tx.getFee());
         }
 
-        return total.toString();
+        return total.toByteArray();
     }
 
-    protected boolean check() throws UnsupportedEncodingException {
+    protected boolean check() {
         for(Transaction tx : txSet) {
-            if(!tx.checkTx()) return false;
+            if(tx.checkTx()) return false;
+            if(tx.checkIO()) return false;
         }
 
         return true;
     }
 
-    protected void process() throws UnsupportedEncodingException {
+    protected void process() {
         for(Transaction tx : txSet) {
             tx.processTx();
         }
     }
 
-    protected String getRoot() {
-        return getMerkleRoot(txSet);
+    protected byte[] getRoot() {
+        return fromHex(getMerkleRoot(txSet));
     }
 }
